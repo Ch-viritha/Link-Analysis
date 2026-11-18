@@ -1,49 +1,188 @@
-# 🔭 Linkscope: AI Website Link Analysis
+# 🔭 Linkscope – AI-Powered Website Link Analysis
 
-FastAPI + SQLite + single-page frontend. Paste a URL and get **competitors, top-5 search queries, SEO fixes, top-5 services and target audience**, powered by an LLM (Anthropic, OpenAI or Gemini, switchable via `.env`).
+Linkscope is a web application that helps users understand a website better by simply entering its URL.
 
-## Quick start
+It analyzes the website and provides useful insights, including potential competitors, top 5 relevant search queries, SEO improvement suggestions, top 5 services offered, and the target audience.
+
+The application is built using **FastAPI, SQLite, and a simple single-page frontend**. It uses the **Google Gemini API** to analyze website content and generate structured insights.
+
+## Getting Started
+
+Follow these steps to run the project locally.
+
+### 1. Create a virtual environment
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
+
+```bash
 pip install -r requirements.txt
-cp .env.example .env        # add ONE api key + set LLM_PROVIDER
+```
+
+### 3. Configure environment variables
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Add your Google Gemini API key and configure the model in the `.env` file.
+
+```env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_api_key
+GEMINI_MODEL=your_model_name
+```
+
+### 4. Start the application
+
+```bash
 uvicorn app.main:app --host 0.0.0.0 --port 4000
 ```
-- App UI: http://localhost:4000  |  Swagger: http://localhost:4000/docs  |  Tests: `pytest`
-- Docker: `docker build -t linkscope . && docker run -p 4000:4000 --env-file .env linkscope`
-- Deploy: any container host (Render, Railway, Fly.io). Set env vars there. Mount a volume at `/srv/data` to persist history.
 
-## API
-`POST /link-analysis` with `{"url": "https://example.com", "force_refresh": false}`
-Also: `GET /api/history`, `GET /api/history/{id}`, `DELETE /api/history/{id}`, `GET /health`.
+Once the server starts, you can access:
+
+- **Application:** http://localhost:4000
+- **API documentation:** http://localhost:4000/docs
+- **Run tests:** `pytest`
+
+### Running with Docker
+
+You can also run the application using Docker:
 
 ```bash
-curl -X POST localhost:4000/link-analysis -H "Content-Type: application/json" -d '{"url":"https://example.com"}'
+docker build -t linkscope .
+docker run -p 4000:4000 --env-file .env linkscope
 ```
-Errors return `{"success": false, "error": {"type", "message"}}` with 400 (invalid/private URL), 422/502/504 (site unreachable or blocked), 502 (LLM failure).
-*Add your own real sample response + screenshots here after running it.*
 
-## Architecture
-`validators` (URL + SSRF) → `website_extractor` (safe fetch, homepage + up to 2 about/services pages, noise stripped) → `analysis_service` (prompt, validation with Pydantic, one repair retry) → `llm_service` (provider abstraction, retry, optional fallback provider) → `db` (SQLite history + cache keyed by URL + content hash).
+### Deployment
 
-**Security:** every redirect hop is re-resolved and blocked if private/loopback/link-local; response size capped; credentials only via env; `.env` git-ignored. *Known limit:* a DNS-rebinding race between check and connect is not fully eliminated; production should pin the resolved IP or use an egress proxy.
+Linkscope can be deployed on container hosting platforms such as Render, Railway, or Fly.io.
 
-**Honesty rules:** competitors and queries are labelled AI-generated; no search volumes are invented; services are flagged `website` vs `inferred`.
+Configure the required environment variables on the hosting platform and mount a persistent volume at `/srv/data` to retain analysis history.
 
-## LLM research (fill in with YOUR measurements)
-Pricing and model names change often. **Copy current prices from the provider pages on your submission date**; the figures below are deliberately left blank rather than guessed.
+## API Endpoints
 
-| Criteria | Anthropic (Claude Haiku-class) | OpenAI (mini-class) | Google (Gemini Flash-class) |
-|---|---|---|---|
-| Env model name | `ANTHROPIC_MODEL` | `OPENAI_MODEL` | `GEMINI_MODEL` |
-| Input / output price per 1M tokens | *from anthropic.com/pricing* | *from openai.com/api/pricing* | *from ai.google.dev/pricing* |
-| Context window | *docs* | *docs* | *docs* |
-| JSON support | Prompted JSON + validation | Native `json_object` mode | Native `responseMimeType` |
-| Measured latency (this app) | *run 5 sites, record `meta.latency_ms`* | *same* | *same* |
-| Measured quality (1-5, your rubric) | *test* | *test* | *test* |
+The main endpoint accepts a website URL and returns its analysis.
 
-**Token estimate (estimate, not measured):** ~3-5k input tokens (12k-char cap + prompt), ~1.5-2.5k output. Cost per analysis = `(in/1e6 × input_price) + (out/1e6 × output_price)`; the API returns real token counts in `meta`, so compute actuals.
+**POST `/link-analysis`**
 
-**Recommendation approach:** default to a small/fast tier model (it is enough for extraction + structured JSON), keep a second provider as `FALLBACK_PROVIDER`, and escalate to a larger model only if your rubric scores show weak competitor insights. Do not claim "maximum accuracy" without running your own comparison.
+Example request:
 
-**Cost optimisation already implemented:** boilerplate/HTML stripped and de-duplicated; hard content cap; single LLM call for all five sections; cache by URL + content hash (24h); one repair retry only on validation failure.
+```json
+{
+  "url": "https://example.com",
+  "force_refresh": false
+}
+```
+
+Other available endpoints:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/history` | View previous analyses |
+| GET | `/api/history/{id}` | Get a specific analysis |
+| DELETE | `/api/history/{id}` | Delete an analysis |
+| GET | `/health` | Check application status |
+
+You can also test the main endpoint using cURL:
+
+```bash
+curl -X POST localhost:4000/link-analysis \
+-H "Content-Type: application/json" \
+-d '{"url":"https://example.com"}'
+```
+
+### Error Handling
+
+The API returns errors in a consistent JSON format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "type": "error_type",
+    "message": "Error description"
+  }
+}
+```
+
+It handles invalid or private URLs, unreachable websites, blocked requests, timeouts, and Gemini API failures using appropriate HTTP status codes (400, 422, 502, and 504).
+
+## How the Application Works
+
+The analysis process is divided into a few steps:
+
+1. **URL Validation:** Checks whether the submitted URL is valid and safe to access.
+2. **Website Extraction:** Fetches the homepage and, when available, up to two relevant pages such as About or Services. Unnecessary HTML content is removed.
+3. **Website Analysis:** Sends the extracted website content to the Google Gemini API to generate insights across all five categories.
+4. **Response Validation:** Uses Pydantic to validate the generated response. If the response doesn't match the expected structure, one correction attempt is made.
+5. **AI Integration:** Uses Google Gemini API to process website content and generate structured analysis results.
+6. **Database Storage:** Saves previous analyses in SQLite and uses caching to avoid repeating unnecessary requests.
+
+## AI Integration – Google Gemini
+
+Linkscope uses the **Google Gemini API** as its AI engine.
+
+After extracting relevant information from a website, the application sends that content to Gemini for analysis. The generated results cover five areas:
+
+- **Competitors:** Identifies potential competitors based on the website's content and business category.
+- **Search Queries:** Suggests five relevant search queries that users might use to find the website's products or services.
+- **SEO Suggestions:** Highlights possible SEO improvements to help improve website visibility.
+- **Services:** Identifies up to five services offered by the website.
+- **Target Audience:** Provides insights into the audience most likely to be interested in the website.
+
+The response is validated using Pydantic to maintain a consistent output structure. If the generated response does not meet the expected format, the application makes one correction attempt.
+
+### API Configuration
+
+The Gemini API key is stored in environment variables instead of being hardcoded into the source code.
+
+```env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_api_key
+GEMINI_MODEL=your_model_name
+```
+
+The model name should match the Gemini model configured in your application.
+
+## Security Considerations
+
+Security was considered throughout the development of Linkscope.
+
+- Validates URLs before making requests.
+- Checks every redirect to prevent access to private, loopback, and link-local IP addresses.
+- Limits the amount of website content downloaded.
+- Keeps API credentials in environment variables instead of hardcoding them.
+- Excludes `.env` files from Git.
+
+**Known limitation:** DNS rebinding is not completely prevented because of a possible race condition between IP validation and the actual connection. For production environments, pinning the resolved IP address or using an egress proxy would provide stronger protection.
+
+## Keeping the Results Reliable
+
+AI-generated results should not be treated as verified facts. To make this clear:
+
+- Competitor suggestions and search queries are identified as AI-generated.
+- Search volumes are not fabricated or presented as real statistics.
+- Services are marked as either `website` (found on the website) or `inferred` (suggested by the AI).
+
+## Performance and Cost Optimizations
+
+A few optimizations have been included to keep the application efficient and reduce unnecessary Gemini API usage:
+
+- Removes unnecessary HTML, repeated content, and website boilerplate before sending data for analysis.
+- Limits the amount of extracted website content.
+- Uses a single Gemini API request to generate all five analysis sections.
+- Caches results for 24 hours using the website URL and content hash.
+- Retries response correction only once when validation fails.
+
+Token usage and response latency can be monitored through the API response metadata.
+
+---
+
+**Linkscope brings website extraction, AI-powered analysis, and SEO insights together in
