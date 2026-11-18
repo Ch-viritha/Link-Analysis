@@ -19,7 +19,7 @@ class Settings:
     }
     cache_ttl_hours = int(os.getenv("CACHE_TTL_HOURS", "24"))
     max_content_chars = int(os.getenv("MAX_CONTENT_CHARS", "12000"))
-    db_path = os.getenv("DB_PATH", "data/analyses.db")
+    db_path = os.getenv("DB_PATH", "/tmp/analyses.db" if os.getenv("VERCEL") else "data/analyses.db")
 
 
 settings = Settings()

@@ -18,7 +18,10 @@ STATIC = Path(__file__).parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db.init()
+    try:
+        db.init()
+    except Exception as e:
+        print("DB init failed:", e)
     yield
 
 
@@ -44,7 +47,10 @@ async def link_analysis(req: LinkRequest):
 
 @app.get("/api/history", tags=["History"])
 def history():
-    return {"items": db.history()}
+    try:
+        return {"items": db.history()}
+    except Exception:
+        return {"items": []}
 
 
 @app.get("/api/history/{rid}", tags=["History"])
@@ -70,7 +76,10 @@ def health():
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(STATIC / "index.html")
+    page = STATIC / "index.html"
+    if not page.exists():
+        return JSONResponse({"message": "UI file not found. Use /docs"})
+    return FileResponse(page)
 
 
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/static", StaticFiles(directory=STATIC, check_dir=False), name="static")
